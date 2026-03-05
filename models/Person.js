@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 const personSchema = new mongoose.Schema({
   firstName: { type: String, required: true },
   lastName: { type: String, required: true },
+  postMaritalName: { type: String, default: '' }, // NEW FIELD
   gender: { type: String, enum: ['Male', 'Female', 'Other', ''], default: '' },
   dateOfBirth: { type: Date },
   dateOfDeath: { type: Date },
@@ -11,7 +12,6 @@ const personSchema = new mongoose.Schema({
   bio: { type: String, default: '' },
   imageUrl: { type: String, default: '' },
   
-  // Explicit Relational Links
   father: { type: mongoose.Schema.Types.ObjectId, ref: 'Person', default: null },
   mother: { type: mongoose.Schema.Types.ObjectId, ref: 'Person', default: null },
   spouse: { type: mongoose.Schema.Types.ObjectId, ref: 'Person', default: null },
