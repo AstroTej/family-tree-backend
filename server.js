@@ -58,13 +58,27 @@ app.get('/api/family', requireViewAccess, async (req, res) => {
 });
 
 // POST and PUT routes strictly require Edit access
+// POST: Add a new family member
 app.post('/api/family', requireEditAccess, upload.single('image'), async (req, res) => {
   try {
-    const { firstName, lastName, gender, dateOfBirth, dateOfDeath, location, occupation, bio, father, mother, spouse } = req.body;
+    const { firstName, lastName, postMaritalName, gender, dateOfBirth, dateOfDeath, location, occupation, bio, father, mother, spouse } = req.body;
+    
+    // --- DUPLICATE PREVENTION ---
+    // Look for exact match of First Name, Last Name, and Father ID
+    const duplicate = await Person.findOne({
+      firstName: { $regex: new RegExp(`^${firstName}$`, 'i') }, 
+      lastName: { $regex: new RegExp(`^${lastName}$`, 'i') },
+      father: father || null
+    });
+
+    if (duplicate) {
+      return res.status(409).json({ error: 'Duplicate person detected.' });
+    }
+
     const imageUrl = req.file ? `/uploads/${req.file.filename}` : '';
 
     const newPerson = new Person({ 
-      firstName, lastName, gender, dateOfBirth, dateOfDeath, location, occupation, bio, imageUrl,
+      firstName, lastName, postMaritalName, gender, dateOfBirth, dateOfDeath, location, occupation, bio, imageUrl,
       father: father || null, mother: mother || null, spouse: spouse || null 
     });
     
@@ -80,6 +94,28 @@ app.post('/api/family', requireEditAccess, upload.single('image'), async (req, r
   }
 });
 
+// DELETE: Remove a person entirely
+app.delete('/api/family/:id', requireEditAccess, async (req, res) => {
+  try {
+    const personId = req.params.id;
+    const person = await Person.findById(personId);
+    if (!person) return res.status(404).json({ error: 'Person not found' });
+
+    // Clean up all relational links before deleting
+    if (person.father) await Person.findByIdAndUpdate(person.father, { $pull: { children: personId } });
+    if (person.mother) await Person.findByIdAndUpdate(person.mother, { $pull: { children: personId } });
+    if (person.spouse) await Person.findByIdAndUpdate(person.spouse, { spouse: null });
+    
+    // Unlink them as a parent from all their children
+    await Person.updateMany({ father: personId }, { father: null });
+    await Person.updateMany({ mother: personId }, { mother: null });
+
+    await Person.findByIdAndDelete(personId);
+    res.json({ message: 'Person deleted successfully' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 app.put('/api/family/:id', requireEditAccess, upload.single('image'), async (req, res) => {
   try {
     const { firstName, lastName, gender, dateOfBirth, dateOfDeath, location, occupation, bio, father, mother, spouse } = req.body;
@@ -118,4 +154,5 @@ app.put('/api/family/:id', requireEditAccess, upload.single('image'), async (req
 app.use('/uploads', express.static('uploads'));
 
 const PORT = process.env.PORT || 5000;
+
 app.listen(PORT, () => console.log(`Backend running on port ${PORT}`));
