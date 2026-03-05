@@ -118,10 +118,10 @@ app.delete('/api/family/:id', requireEditAccess, async (req, res) => {
 });
 app.put('/api/family/:id', requireEditAccess, upload.single('image'), async (req, res) => {
   try {
-    const { firstName, lastName, gender, dateOfBirth, dateOfDeath, location, occupation, bio, father, mother, spouse } = req.body;
+    const { firstName, lastName, postMaritalName, gender, dateOfBirth, dateOfDeath, location, occupation, bio, father, mother, spouse } = req.body;
     const personId = req.params.id;
     
-    const updateData = { firstName, lastName, gender, dateOfBirth, dateOfDeath, location, occupation, bio };
+    const updateData = { firstName, lastName, postMaritalName, gender, dateOfBirth, dateOfDeath, location, occupation, bio };
     if (req.file) updateData.imageUrl = `/uploads/${req.file.filename}`;
 
     const existingPerson = await Person.findById(personId);
@@ -156,3 +156,4 @@ app.use('/uploads', express.static('uploads'));
 const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, () => console.log(`Backend running on port ${PORT}`));
+
