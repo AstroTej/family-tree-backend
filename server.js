@@ -57,43 +57,6 @@ app.get('/api/family', requireViewAccess, async (req, res) => {
   }
 });
 
-// POST and PUT routes strictly require Edit access
-// POST: Add a new family member
-app.post('/api/family', requireEditAccess, upload.single('image'), async (req, res) => {
-  try {
-    const { firstName, lastName, postMaritalName, gender, dateOfBirth, dateOfDeath, location, occupation, bio, father, mother, spouse } = req.body;
-    
-    // --- DUPLICATE PREVENTION ---
-    // Look for exact match of First Name, Last Name, and Father ID
-    const duplicate = await Person.findOne({
-      firstName: { $regex: new RegExp(`^${firstName}$`, 'i') }, 
-      lastName: { $regex: new RegExp(`^${lastName}$`, 'i') },
-      father: father || null
-    });
-
-    if (duplicate) {
-      return res.status(409).json({ error: 'Duplicate person detected.' });
-    }
-
-    const imageUrl = req.file ? `/uploads/${req.file.filename}` : '';
-
-    const newPerson = new Person({ 
-      firstName, lastName, postMaritalName, gender, dateOfBirth, dateOfDeath, location, occupation, bio, imageUrl,
-      father: father || null, mother: mother || null, spouse: spouse || null 
-    });
-    
-    await newPerson.save();
-
-    if (father) await Person.findByIdAndUpdate(father, { $push: { children: newPerson._id } });
-    if (mother) await Person.findByIdAndUpdate(mother, { $push: { children: newPerson._id } });
-    if (spouse) await Person.findByIdAndUpdate(spouse, { spouse: newPerson._id });
-
-    res.status(201).json(newPerson);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
 // DELETE: Remove a person entirely
 app.delete('/api/family/:id', requireEditAccess, async (req, res) => {
   try {
@@ -116,32 +79,79 @@ app.delete('/api/family/:id', requireEditAccess, async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+// POST: Add a new family member
+app.post('/api/family', requireEditAccess, upload.single('image'), async (req, res) => {
+  try {
+    // Note: Changed 'const' to 'let' so we can modify the variables
+    let { firstName, lastName, postMaritalName, gender, dateOfBirth, dateOfDeath, location, occupation, bio, father, mother, spouse } = req.body;
+    
+    // --- THE MAGIC WORD CATCHER ---
+    father = father === 'NONE' ? null : father;
+    mother = mother === 'NONE' ? null : mother;
+    spouse = spouse === 'NONE' ? null : spouse;
+
+    const duplicate = await Person.findOne({
+      firstName: { $regex: new RegExp(`^${firstName}$`, 'i') }, 
+      lastName: { $regex: new RegExp(`^${lastName}$`, 'i') },
+      father: father || null
+    });
+
+    if (duplicate) return res.status(409).json({ error: 'Duplicate person detected.' });
+
+    const imageUrl = req.file ? `/uploads/${req.file.filename}` : '';
+
+    const newPerson = new Person({ 
+      firstName, lastName, postMaritalName, gender, dateOfBirth, dateOfDeath, location, occupation, bio, imageUrl,
+      father: father || null, mother: mother || null, spouse: spouse || null 
+    });
+    
+    await newPerson.save();
+
+    if (father) await Person.findByIdAndUpdate(father, { $push: { children: newPerson._id } });
+    if (mother) await Person.findByIdAndUpdate(mother, { $push: { children: newPerson._id } });
+    if (spouse) await Person.findByIdAndUpdate(spouse, { spouse: newPerson._id });
+
+    res.status(201).json(newPerson);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT: Update an existing family member
 app.put('/api/family/:id', requireEditAccess, upload.single('image'), async (req, res) => {
   try {
-    const { firstName, lastName, postMaritalName, gender, dateOfBirth, dateOfDeath, location, occupation, bio, father, mother, spouse } = req.body;
+    // Note: Changed 'const' to 'let' here too!
+    let { firstName, lastName, postMaritalName, gender, dateOfBirth, dateOfDeath, location, occupation, bio, father, mother, spouse } = req.body;
     const personId = req.params.id;
     
+    // --- THE MAGIC WORD CATCHER ---
+    father = father === 'NONE' ? null : father;
+    mother = mother === 'NONE' ? null : mother;
+    spouse = spouse === 'NONE' ? null : spouse;
+
     const updateData = { firstName, lastName, postMaritalName, gender, dateOfBirth, dateOfDeath, location, occupation, bio };
     if (req.file) updateData.imageUrl = `/uploads/${req.file.filename}`;
 
     const existingPerson = await Person.findById(personId);
 
-    if (father !== undefined && father !== existingPerson.father?.toString()) {
+    if (father !== undefined && father !== (existingPerson.father ? existingPerson.father.toString() : null)) {
       if (existingPerson.father) await Person.findByIdAndUpdate(existingPerson.father, { $pull: { children: personId } });
       if (father) await Person.findByIdAndUpdate(father, { $push: { children: personId } });
-      updateData.father = father || null;
+      updateData.father = father;
     }
 
-    if (mother !== undefined && mother !== existingPerson.mother?.toString()) {
+    if (mother !== undefined && mother !== (existingPerson.mother ? existingPerson.mother.toString() : null)) {
       if (existingPerson.mother) await Person.findByIdAndUpdate(existingPerson.mother, { $pull: { children: personId } });
       if (mother) await Person.findByIdAndUpdate(mother, { $push: { children: personId } });
-      updateData.mother = mother || null;
+      updateData.mother = mother;
     }
 
-    if (spouse !== undefined && spouse !== existingPerson.spouse?.toString()) {
+    // This block will now perfectly unlink the spouse from both cards!
+    if (spouse !== undefined && spouse !== (existingPerson.spouse ? existingPerson.spouse.toString() : null)) {
       if (existingPerson.spouse) await Person.findByIdAndUpdate(existingPerson.spouse, { spouse: null });
       if (spouse) await Person.findByIdAndUpdate(spouse, { spouse: personId });
-      updateData.spouse = spouse || null;
+      updateData.spouse = spouse;
     }
 
     const updatedPerson = await Person.findByIdAndUpdate(personId, updateData, { returnDocument: 'after' });
@@ -156,4 +166,5 @@ app.use('/uploads', express.static('uploads'));
 const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, () => console.log(`Backend running on port ${PORT}`));
+
 
